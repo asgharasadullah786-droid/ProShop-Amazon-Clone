@@ -24,4 +24,35 @@ class OrderController extends Controller
         
         return view('orders.show', compact('order'));
     }
+    public function cancel(Request $request, Order $order)
+{
+    // Check if user owns this order
+    if ($order->user_id != auth()->id()) {
+        abort(403, 'Unauthorized action.');
+    }
+    
+    // Only pending or processing orders can be cancelled
+    if (!in_array($order->order_status, ['pending', 'processing'])) {
+        return back()->with('error', 'This order cannot be cancelled.');
+    }
+    
+    // Update order status
+    $order->order_status = 'cancelled';
+    $order->cancelled_at = now();
+    $order->save();
+    
+    // Restore product stock
+    foreach ($order->orderItems as $item) {
+        $product = $item->product;
+        if ($product) {
+            $product->stock += $item->quantity;
+            $product->save();
+        }
+    }
+    
+    // Send cancellation email (optional)
+    // Mail::to($order->user->email)->send(new OrderCancelled($order));
+    
+    return redirect()->route('profile.orders')->with('success', 'Order cancelled successfully!');
+}
 }

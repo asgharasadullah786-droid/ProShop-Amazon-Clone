@@ -25,25 +25,28 @@ class CompareController extends Controller
         $productId = $request->product_id;
         $compare = session()->get('compare', []);
         
-        if (!in_array($productId, $compare)) {
-            if (count($compare) >= 4) {
-                return response()->json([
-                    'success' => false, 
-                    'message' => 'You can compare up to 4 products only!'
-                ]);
-            }
-            $compare[] = $productId;
-            session()->put('compare', $compare);
-            
+        // Check if product already in compare list
+        if (in_array($productId, $compare)) {
             return response()->json([
-                'success' => true, 
-                'message' => 'Product added to compare!'
+                'success' => false, 
+                'message' => 'Product already in compare list!'
             ]);
         }
         
+        // Limit to 4 products
+        if (count($compare) >= 4) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'You can compare up to 4 products only!'
+            ]);
+        }
+        
+        $compare[] = $productId;
+        session()->put('compare', $compare);
+        
         return response()->json([
-            'success' => false, 
-            'message' => 'Product already in compare list!'
+            'success' => true, 
+            'message' => 'Product added to compare!'
         ]);
     }
     
@@ -60,9 +63,15 @@ class CompareController extends Controller
         return redirect()->route('compare.index')->with('success', 'Product removed from compare!');
     }
     
-    public function clear()
+    public function removeAll(Request $request)
     {
         session()->forget('compare');
-        return redirect()->route('compare.index')->with('success', 'Compare list cleared!');
+        return redirect()->route('compare.index')->with('success', 'All products removed from compare!');
+    }
+    
+    public function getCompareCount()
+    {
+        $compare = session()->get('compare', []);
+        return response()->json(['count' => count($compare)]);
     }
 }

@@ -24,8 +24,8 @@ Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name
 Route::get('/products/search', [ProductController::class, 'search'])->name('products.search');
 Route::resource('products', ProductController::class);
 
-// Cart Routes - Only Customers
-Route::prefix('cart')->middleware(['auth', 'customer'])->group(function () {
+// Cart Routes - Allow guests (remove customer middleware)
+Route::prefix('cart')->group(function () {
     Route::post('/add', [CartController::class, 'add'])->name('cart.add');
     Route::get('/', [CartController::class, 'index'])->name('cart.index');
     Route::post('/update', [CartController::class, 'update'])->name('cart.update');
@@ -47,8 +47,8 @@ Route::post('/reviews', [ReviewController::class, 'store'])->name('reviews.store
 Route::post('/coupon/apply', [CouponController::class, 'apply'])->name('coupon.apply')->middleware('auth');
 Route::post('/coupon/remove', [CouponController::class, 'remove'])->name('coupon.remove')->middleware('auth');
 
-// Checkout Routes (Requires login)
-Route::prefix('checkout')->middleware('auth')->group(function () {
+// Checkout Routes - Allow guests
+Route::prefix('checkout')->group(function () {
     Route::get('/', [CheckoutController::class, 'index'])->name('checkout.index');
     Route::post('/place', [CheckoutController::class, 'placeOrder'])->name('checkout.place');
 });
@@ -79,6 +79,8 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
     Route::get('/users', [App\Http\Controllers\Admin\DashboardController::class, 'users'])->name('admin.users');
     Route::post('/users/{user}/update-role', [App\Http\Controllers\Admin\DashboardController::class, 'updateUserRole'])->name('admin.users.update-role');
     Route::get('/export-orders', [App\Http\Controllers\Admin\DashboardController::class, 'exportOrders'])->name('admin.export-orders');
+    Route::post('/orders/{order}/verify-otp', [App\Http\Controllers\Admin\DashboardController::class, 'verifyOTP'])->name('admin.orders.verify-otp');
+    Route::post('/orders/{order}/resend-otp', [App\Http\Controllers\Admin\DashboardController::class, 'resendOTP'])->name('admin.orders.resend-otp');
 });
 
 Route::get('/invoice/{order}/download', [App\Http\Controllers\InvoiceController::class, 'download'])->name('invoice.download')->middleware('auth');
@@ -92,14 +94,61 @@ Route::post('/flash-sale/add', [App\Http\Controllers\FlashSaleController::class,
 
 // Compare Routes
 Route::prefix('compare')->middleware('auth')->group(function () {
-    Route::post('/add', [App\Http\Controllers\CompareController::class, 'add'])->name('compare.add');
     Route::get('/', [App\Http\Controllers\CompareController::class, 'index'])->name('compare.index');
+    Route::post('/add', [App\Http\Controllers\CompareController::class, 'add'])->name('compare.add');
     Route::post('/remove', [App\Http\Controllers\CompareController::class, 'remove'])->name('compare.remove');
-    Route::get('/clear', [App\Http\Controllers\CompareController::class, 'clear'])->name('compare.clear');
+    Route::post('/remove-all', [App\Http\Controllers\CompareController::class, 'removeAll'])->name('compare.remove-all');
+    Route::get('/count', [App\Http\Controllers\CompareController::class, 'getCompareCount'])->name('compare.count');
 });
 
 // Slider Routes (Admin only)
 Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
     Route::resource('sliders', App\Http\Controllers\SliderController::class);
     Route::post('/sliders/{slider}/toggle', [App\Http\Controllers\SliderController::class, 'toggle'])->name('sliders.toggle');
+});
+
+Route::get('/store/{id}', [App\Http\Controllers\VendorController::class, 'storefront'])->name('vendor.storefront');
+Route::get('/vendor/edit', [App\Http\Controllers\VendorController::class, 'edit'])->name('vendor.edit')->middleware('auth');
+Route::post('/vendor/update', [App\Http\Controllers\VendorController::class, 'update'])->name('vendor.update')->middleware('auth');
+
+// Wallet Routes
+Route::prefix('wallet')->middleware(['auth', 'customer'])->group(function () {
+    Route::get('/', [App\Http\Controllers\WalletController::class, 'index'])->name('wallet.index');
+    Route::post('/add-balance', [App\Http\Controllers\WalletController::class, 'addBalance'])->name('wallet.add-balance');
+    Route::get('/payment', [App\Http\Controllers\WalletController::class, 'payment'])->name('wallet.payment');
+    Route::post('/payment-success', [App\Http\Controllers\WalletController::class, 'paymentSuccess'])->name('wallet.payment.success');
+    Route::post('/order/{order}/pay-with-wallet', [App\Http\Controllers\WalletController::class, 'useWalletForOrder'])->name('wallet.pay-order');
+});
+    // Cancel Order Route
+Route::post('/orders/{order}/cancel', [App\Http\Controllers\OrderController::class, 'cancel'])->name('orders.cancel')->middleware('auth');
+// Abandoned Cart Routes
+Route::post('/cart/track', [App\Http\Controllers\AbandonedCartController::class, 'track'])->name('cart.track');
+Route::get('/cart/recover/{id}', [App\Http\Controllers\AbandonedCartController::class, 'recover'])->name('cart.recover');
+Route::get('/admin/send-abandoned-cart-reminders', [App\Http\Controllers\AbandonedCartController::class, 'sendReminders'])
+    ->name('admin.send-abandoned-cart-reminders')
+    ->middleware(['auth', 'admin']);
+
+// Guest Order Routes
+Route::get('/guest/order/track/{token}', [App\Http\Controllers\GuestOrderController::class, 'track'])->name('guest.order.track');
+Route::get('/guest/order/create-account/{token}', [App\Http\Controllers\GuestOrderController::class, 'createAccount'])->name('guest.order.create-account');
+Route::post('/guest/order/register/{token}', [App\Http\Controllers\GuestOrderController::class, 'registerAccount'])->name('guest.order.register');    
+
+// Review Management Routes (Admin)
+Route::delete('/reviews/{review}', [App\Http\Controllers\ReviewController::class, 'destroy'])->name('reviews.destroy')->middleware('auth');
+Route::post('/reviews/{review}/toggle', [App\Http\Controllers\ReviewController::class, 'toggleApproval'])->name('reviews.toggle')->middleware('auth');
+
+// Stock Notification Routes
+Route::post('/stock/notify/{product}', [App\Http\Controllers\StockNotificationController::class, 'subscribe'])->name('stock.notify');
+Route::get('/stock/unsubscribe/{token}', [App\Http\Controllers\StockNotificationController::class, 'unsubscribe'])->name('stock.unsubscribe');
+
+// Price Alert Routes
+Route::post('/price-alert/subscribe/{product}', [App\Http\Controllers\PriceAlertController::class, 'subscribe'])->name('price-alert.subscribe');
+Route::get('/price-alert/unsubscribe/{token}', [App\Http\Controllers\PriceAlertController::class, 'unsubscribe'])->name('price-alert.unsubscribe');
+
+// Bulk Import/Export Routes (Admin only)
+Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
+    Route::get('/bulk-import-export', [App\Http\Controllers\BulkImportExportController::class, 'index'])->name('bulk.index');
+    Route::get('/export-products', [App\Http\Controllers\BulkImportExportController::class, 'export'])->name('bulk.export');
+    Route::get('/export-sample', [App\Http\Controllers\BulkImportExportController::class, 'exportSample'])->name('bulk.export.sample');
+    Route::post('/import-products', [App\Http\Controllers\BulkImportExportController::class, 'import'])->name('bulk.import');
 });

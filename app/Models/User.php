@@ -5,13 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
 
     protected $fillable = [
-        'name', 'email', 'password', 'phone', 'address', 'role'
+        'name', 'email', 'password', 'phone', 'address', 'role', 'store_description', 'avatar', 'sold_count'
     ];
 
     protected $hidden = [
@@ -34,6 +35,11 @@ class User extends Authenticatable
         return $this->role === 'seller';
     }
 
+    public function isCustomer()
+    {
+        return $this->role === 'customer';
+    }
+
     // Relationships
     public function products()
     {
@@ -42,7 +48,7 @@ class User extends Authenticatable
 
     public function orders()
     {
-        return $this->hasMany(Order::class);
+        return $this->hasMany(Order::class, 'user_id');
     }
 
     public function reviews()
@@ -53,5 +59,22 @@ class User extends Authenticatable
     public function wishlists()
     {
         return $this->hasMany(Wishlist::class);
+    }
+
+    // For seller: orders containing seller's products
+    public function sellerOrders()
+    {
+        return $this->hasManyThrough(OrderItem::class, Product::class, 'user_id', 'product_id');
+    }
+
+    // Wallet relationships
+    public function wallet()
+    {
+        return $this->hasOne(Wallet::class);
+    }
+
+    public function walletTransactions()
+    {
+        return $this->hasMany(WalletTransaction::class);
     }
 }

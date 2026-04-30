@@ -17,9 +17,7 @@ class ProfileController extends Controller
     public function index()
     {
         $user = auth()->user();
-        $orders = Order::where('user_id', $user->id)->orderBy('created_at', 'desc')->paginate(10);
-        
-        return view('profile.index', compact('user', 'orders'));
+        return view('profile.index', compact('user'));
     }
 
     public function update(Request $request)
@@ -58,14 +56,30 @@ class ProfileController extends Controller
     }
 
     public function orders()
-    {
-        $orders = Order::where('user_id', auth()->id())->orderBy('created_at', 'desc')->paginate(10);
-        return view('profile.orders', compact('orders'));
+{
+    if (auth()->user()->role == 'admin') {
+        // Admin can see all orders
+        $orders = Order::orderBy('created_at', 'desc')->paginate(10);
+    } else {
+        // Customer sees only their orders
+        $orders = Order::where('user_id', auth()->id())
+            ->orderBy('created_at', 'desc')
+            ->paginate(10);
     }
+    
+    return view('profile.orders', compact('orders'));
+}
 
     public function orderDetails($id)
-    {
-        $order = Order::where('user_id', auth()->id())->with('orderItems')->findOrFail($id);
-        return view('profile.order_details', compact('order'));
+{
+    if (auth()->user()->role == 'admin') {
+        $order = Order::with('orderItems')->findOrFail($id);
+    } else {
+        $order = Order::where('user_id', auth()->id())
+            ->with('orderItems')
+            ->findOrFail($id);
     }
+    
+    return view('profile.order_details', compact('order'));
+}
 }

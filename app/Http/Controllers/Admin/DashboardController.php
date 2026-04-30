@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;  // ADD THIS
+use App\Mail\OrderOTP;
 
 class DashboardController extends Controller
 {
@@ -68,15 +70,47 @@ class DashboardController extends Controller
     }
     
     public function updateOrderStatus(Request $request, Order $order)
-    {
-        $request->validate([
-            'order_status' => 'required|in:pending,processing,shipped,delivered,cancelled'
-        ]);
-        
-        $order->updateStatus($request->order_status);
-        
-        return redirect()->back()->with('success', 'Order status updated!');
+{
+    $request->validate([
+        'order_status' => 'required|in:pending,processing,shipped,delivered,cancelled'
+    ]);
+    
+    // If marking as shipped for COD order, ensure OTP is generated
+    if ($request->order_status == 'shipped' && $order->payment_method == 'cod') {
+        if (!$order->delivery_otp) {
+            $otp = $this->generateOTP();
+            $order->delivery_otp = $otp;
+            $order->otp_expires_at = now()->addDays(3);
+            $order->save();
+            
+            // Send OTP email
+            try {
+                Mail::to($order->user->email)->send(new \App\Mail\OrderOTP($order, $otp));
+            } catch (\Exception $e) {
+                \Log::error('OTP Email failed: ' . $e->getMessage());
+            }
+        }
     }
+    
+    $order->order_status = $request->order_status;
+    $order->save();
+    
+    // If cancelled, restore stock
+    if ($request->order_status == 'cancelled') {
+        foreach ($order->orderItems as $item) {
+            $product = $item->product;
+            $product->stock += $item->quantity;
+            $product->save();
+        }
+    }
+    
+    return redirect()->back()->with('success', 'Order status updated!');
+}
+
+private function generateOTP()
+{
+    return str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+}
     
     public function users()
     {
@@ -104,4 +138,67 @@ class DashboardController extends Controller
         // Implementation here
         return redirect()->back()->with('success', 'Export feature coming soon!');
     }
+    public function verifyOTP(Request $request, Order $order)
+{
+    $request->validate([
+        'otp' => 'required|string|size:6'
+    ]);
+    
+    if ($order->payment_method !== 'cod') {
+        return back()->with('error', 'OTP verification is only for COD orders.');
+    }
+    
+    if ($order->otp_verified) {
+        return back()->with('error', 'OTP already verified for this order.');
+    }
+    
+    if ($order->otp_expires_at && now()->gt($order->otp_expires_at)) {
+        return back()->with('error', 'OTP has expired. Please contact support.');
+    }
+    
+    // Convert both to string for comparison (FIX)
+    $dbOtp = (string)$order->delivery_otp;
+    $inputOtp = (string)$request->otp;
+    
+    \Log::info('OTP Comparison - DB: ' . $dbOtp . ', Input: ' . $inputOtp);
+    
+    if ($dbOtp !== $inputOtp) {
+        $order->increment('otp_attempts');
+        $remainingAttempts = 3 - $order->otp_attempts;
+        return back()->with('error', "Invalid OTP. {$remainingAttempts} attempts remaining.");
+    }
+    
+    // OTP verified - complete delivery
+    $order->otp_verified = 1;
+    $order->order_status = 'delivered';
+    $order->payment_status = 'paid';
+    $order->delivered_at = now();
+    $order->save();
+    
+    return redirect()->route('admin.orders')->with('success', 'OTP verified! Order marked as delivered.');
+}
+public function resendOTP(Order $order)
+{
+    if ($order->payment_method !== 'cod') {
+        return back()->with('error', 'OTP is only for COD orders.');
+    }
+    
+    if ($order->otp_verified) {
+        return back()->with('error', 'Order already delivered.');
+    }
+    
+    $otp = $this->generateOTP();
+    $order->delivery_otp = $otp;
+    $order->otp_expires_at = now()->addDays(3);
+    $order->otp_attempts = 0;
+    $order->save();
+    
+    try {
+        Mail::to($order->user->email)->send(new \App\Mail\OrderOTP($order, $otp));
+    } catch (\Exception $e) {
+        \Log::error('OTP Email failed: ' . $e->getMessage());
+    }
+    
+    return back()->with('success', 'New OTP sent to customer!');
+}
 }

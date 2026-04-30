@@ -78,29 +78,38 @@
                 <div class="card-header">Recent Orders</div>
                 <div class="card-body">
                     <table class="table table-bordered">
-                        <thead>
-                            <tr>
-                                <th>Order #</th>
-                                <th>Customer</th>
-                                <th>Total</th>
-                                <th>Status</th>
-                                <th>Date</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($recentOrders as $order)
-                            <tr>
-                                <td>{{ $order->order_number }}</td>
-                                <td>{{ $order->user->name }}</td>
-                                <td>${{ number_format($order->total, 2) }}</td>
-                                <td>{!! $order->status_badge !!}</td>
-                                <td>{{ $order->created_at->format('d M Y') }}</td>
-                                <td><a href="{{ route('admin.orders') }}" class="btn btn-sm btn-primary">View</a></td>
-                            </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+    <thead>
+        <tr>
+            <th>Order #</th>
+            <th>Customer</th>
+            <th>Total</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach($recentOrders as $order)
+        <tr>
+            <td>{{ $order->order_number }}</td>
+            <td>
+                @if($order->is_guest)
+                    <span class="badge bg-secondary">Guest</span>
+                    {{ $order->guest_name }}
+                @else
+                    {{ $order->user->name ?? 'N/A' }}
+                @endif
+            </td>
+            <td>${{ number_format($order->total, 2) }}</td>
+            <td>{!! $order->status_badge !!}</td>
+            <td>{{ $order->created_at->format('d M Y') }}</td>
+            <td>
+                <a href="{{ route('admin.orders') }}" class="btn btn-sm btn-primary">View</a>
+            </td>
+        </tr>
+        @endforeach
+    </tbody>
+</table>
                 </div>
             </div>
         </div>

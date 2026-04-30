@@ -9,41 +9,47 @@ class CartController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth');
+        // Remove auth middleware - allow guests to add to cart
+        // $this->middleware('auth');
     }
 
     public function add(Request $request)
-{
-    $product = Product::findOrFail($request->product_id);
-    $quantity = $request->quantity ?? 1;
-    
-    // Check if this is a flash sale with custom price
-    $price = $request->has('price') ? $request->price : $product->price;
-    
-    $cart = session()->get('cart', []);
-    
-    if (isset($cart[$product->id])) {
-        $cart[$product->id]['quantity'] += $quantity;
-    } else {
-        $cart[$product->id] = [
-            'id' => $product->id,
-            'name' => $product->name,
-            'price' => $price,  // Use flash sale price if available
-            'quantity' => $quantity,
-            'image' => $product->image,
-            'stock' => $product->stock,
-            'original_price' => $product->price // Store original for reference
-        ];
+    {
+        // Track abandoned cart (only for logged in users)
+        if (auth()->check()) {
+            app(\App\Http\Controllers\AbandonedCartController::class)->track(new \Illuminate\Http\Request());
+        }
+        
+        $product = Product::findOrFail($request->product_id);
+        $quantity = $request->quantity ?? 1;
+        
+        // Check if this is a flash sale with custom price
+        $price = $request->has('price') ? $request->price : $product->price;
+        
+        $cart = session()->get('cart', []);
+        
+        if (isset($cart[$product->id])) {
+            $cart[$product->id]['quantity'] += $quantity;
+        } else {
+            $cart[$product->id] = [
+                'id' => $product->id,
+                'name' => $product->name,
+                'price' => $price,
+                'quantity' => $quantity,
+                'image' => $product->image,
+                'stock' => $product->stock,
+                'original_price' => $product->price
+            ];
+        }
+        
+        session()->put('cart', $cart);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Product added to cart at $' . number_format($price, 2) . '!',
+            'cart_count' => count(session()->get('cart', []))
+        ]);
     }
-    
-    session()->put('cart', $cart);
-    
-    return response()->json([
-        'success' => true,
-        'message' => 'Product added to cart at $' . number_format($price, 2) . '!',
-        'cart_count' => count(session()->get('cart', []))
-    ]);
-}
 
     // View cart
     public function index()
@@ -61,6 +67,11 @@ class CartController extends Controller
     // Update cart
     public function update(Request $request)
     {
+        // Track abandoned cart (only for logged in users)
+        if (auth()->check()) {
+            app(\App\Http\Controllers\AbandonedCartController::class)->track(new \Illuminate\Http\Request());
+        }
+        
         $cart = session()->get('cart', []);
         
         if (isset($cart[$request->product_id])) {
@@ -74,6 +85,11 @@ class CartController extends Controller
     // Remove from cart
     public function remove(Request $request)
     {
+        // Track abandoned cart (only for logged in users)
+        if (auth()->check()) {
+            app(\App\Http\Controllers\AbandonedCartController::class)->track(new \Illuminate\Http\Request());
+        }
+        
         $cart = session()->get('cart', []);
         
         if (isset($cart[$request->product_id])) {

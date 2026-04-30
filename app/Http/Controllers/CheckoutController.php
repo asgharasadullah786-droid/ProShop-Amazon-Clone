@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\User;
 use Illuminate\Http\Request;
 use App\Mail\OrderConfirmation;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 class CheckoutController extends Controller
 {
@@ -35,7 +37,7 @@ class CheckoutController extends Controller
         $request->validate([
             'shipping_address' => 'required|string',
             'phone' => 'required|string',
-            'payment_method' => 'required|in:cod,card,mobile_banking'
+            'payment_method' => 'required|in:cod,card,mobile_banking,wallet',
         ]);
         
         $cart = session()->get('cart', []);
@@ -53,10 +55,26 @@ class CheckoutController extends Controller
         $discount = $coupon['discount'] ?? 0;
         $total = $subtotal - $discount;
         
+        // Check if user is logged in or guest
+        $isGuest = !auth()->check();
+        $userId = auth()->check() ? auth()->id() : null;
+        
+        // For guests, validate email
+        if ($isGuest) {
+            $request->validate([
+                'guest_email' => 'required|email',
+                'guest_name' => 'required|string|max:255',
+            ]);
+        }
+        
         // Create order
         $order = Order::create([
             'order_number' => 'ORD-' . strtoupper(uniqid()),
-            'user_id' => auth()->id(),
+            'user_id' => $userId,
+            'guest_email' => $isGuest ? $request->guest_email : null,
+            'guest_name' => $isGuest ? $request->guest_name : null,
+            'is_guest' => $isGuest,
+            'guest_token' => $isGuest ? Str::random(60) : null,
             'subtotal' => $subtotal,
             'discount' => $discount,
             'total' => $total,
@@ -84,13 +102,25 @@ class CheckoutController extends Controller
                 $product->save();
             }
         }
-
-        // After order creation
-        Mail::to($order->user->email)->send(new OrderConfirmation($order));
-
+        
+        // Send order confirmation email
+        $emailTo = $isGuest ? $request->guest_email : $order->user->email;
+        try {
+            Mail::to($emailTo)->send(new OrderConfirmation($order));
+        } catch (\Exception $e) {
+            \Log::error('Order confirmation email failed: ' . $e->getMessage());
+        }
+        
         // Clear cart and coupon
         session()->forget(['cart', 'coupon']);
         
-        return redirect()->route('products.index')->with('success', 'Order placed successfully!');
+        // Store guest token in session for order tracking
+        if ($isGuest) {
+            session(['guest_order_token' => $order->guest_token]);
+            return redirect()->route('guest.order.track', $order->guest_token)
+                ->with('success', 'Order placed successfully! A confirmation email has been sent.');
+        }
+        
+        return redirect()->route('profile.orders')->with('success', 'Order placed successfully!');
     }
 }
