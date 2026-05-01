@@ -152,3 +152,5 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
     Route::get('/export-sample', [App\Http\Controllers\BulkImportExportController::class, 'exportSample'])->name('bulk.export.sample');
     Route::post('/import-products', [App\Http\Controllers\BulkImportExportController::class, 'import'])->name('bulk.import');
 });
+
+Route::post('/newsletter/subscribe', [App\Http\Controllers\NewsletterController::class, 'subscribe'])->name('newsletter.subscribe');
